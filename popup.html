@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .mode-select {
+      margin-top: 10px;
+      display: none;
+    }
+    select {
+      width: 100%;
+      padding: 5px;
+      border: 1px solid #ff9800;
+      border-radius: 4px;
+      color: #ff9800;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">视频助手 Pro</div>
+  
+  <div class="section">
+    <div class="label">播放倍速</div>
+    <div class="btn-group">
+      <button id="rate1" data-rate="1">1x</button>
+      <button id="rate2" data-rate="2">2x</button>
+      <button id="rate3" data-rate="3">3x</button>
+      <button id="rate4" data-rate="4">4x</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="switch-container">
+      <div class="label" style="margin-bottom: 0;">原生字幕增强</div>
+      <label class="switch">
+        <input type="checkbox" id="translateToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="switch-container">
+      <div class="label" style="margin-bottom: 0;">麦克风语音同传</div>
+      <label class="switch">
+        <input type="checkbox" id="micToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="micSettings" class="mode-select">
+      <div class="label" style="font-size: 12px; margin-top: 5px;">识别语种:</div>
+      <select id="micLang">
+        <option value="en-US">英语 (English)</option>
+        <option value="ja-JP">日语 (日本語)</option>
+        <option value="zh-HK">粤语 (廣東話)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="footer">简洁 · 智能 · 极速</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
