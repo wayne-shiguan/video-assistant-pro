@@ -3,7 +3,7 @@ let xOffset = 0;
 let yOffset = 0;
 let observer = null;
 let recognition = null;
-let subtitleQueue = []; // 用于存储最近的字幕行
+let lastCleanText = ""; // 用于记录最后一次处理的纯净文本
 
 const style = document.createElement('style');
 style.id = 'va-hide-native-subtitles';
@@ -53,12 +53,12 @@ function createSubtitleUI() {
   subtitleContainer.id = 'va-draggable-subtitles';
   subtitleContainer.style.cssText = `
     position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.85); color: white; padding: 15px 25px;
+    background-color: rgba(0, 0, 0, 0.8); color: white; padding: 15px 30px;
     border-radius: 12px; z-index: 2147483647; cursor: move;
-    text-align: center; max-width: 80%; line-height: 1.4;
+    text-align: center; max-width: 85%; line-height: 1.4;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1.5px solid #ff9800; user-select: none;
   `;
-  subtitleContainer.innerHTML = `<div id="va-content">等待内容...</div>`;
+  subtitleContainer.innerHTML = `<div id="va-content" style="color: #ffffff; font-size: 26px; font-weight: bold;">等待翻译内容...</div>`;
   document.body.appendChild(subtitleContainer);
   
   subtitleContainer.onmousedown = (e) => {
@@ -81,7 +81,9 @@ function initSubtitleObserver() {
     let text = "";
     const host = window.location.hostname;
     if (host.includes('youtube.com')) {
-      text = Array.from(document.querySelectorAll('.ytp-caption-segment')).map(s => s.innerText).join(' ');
+      // 针对 YouTube 优化：只取当前显示的最新片段
+      const segments = document.querySelectorAll('.ytp-caption-segment');
+      text = Array.from(segments).map(s => s.innerText).join(' ');
     } else if (host.includes('bilibili.com')) {
       text = Array.from(document.querySelectorAll('.bpx-player-subtitle-content')).map(s => s.innerText).join(' ');
     }
@@ -93,7 +95,7 @@ function initSubtitleObserver() {
 function stopSubtitleObserver() {
   if (observer) observer.disconnect();
   if (subtitleContainer) subtitleContainer.style.display = 'none';
-  subtitleQueue = [];
+  lastCleanText = "";
 }
 
 function startMic(lang) {
@@ -119,37 +121,28 @@ function startMic(lang) {
 function stopMic() {
   if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
   if (subtitleContainer) subtitleContainer.style.display = 'none';
-  subtitleQueue = [];
+  lastCleanText = "";
 }
 
-let lastText = "";
 async function updateSubtitleText(text) {
-  const cleanText = text.replace(/英语（自动生成）|中文（简体）|点击查看设置|>>/g, '').trim();
-  if (!cleanText || cleanText === lastText) return;
-  lastText = cleanText;
+  // 文本清洗：过滤系统提示词和特殊符号
+  const cleanText = text.replace(/英语（自动生成）|中文（简体）|点击查看设置|>>|字幕/g, '').trim();
+  
+  // 严格去重：如果清洗后的文本与上一次相同，或者包含在上一次中，则跳过
+  if (!cleanText || cleanText === lastCleanText || lastCleanText.includes(cleanText)) return;
+  
+  // 如果新文本包含旧文本，说明是追加，我们只翻译完整的新文本
+  lastCleanText = cleanText;
   
   const translated = await translateText(cleanText);
-  
-  // 字幕队列管理：最多保留两行
-  const newSubtitle = { original: cleanText, translated: translated };
-  subtitleQueue.push(newSubtitle);
-  if (subtitleQueue.length > 2) {
-    subtitleQueue.shift(); // 移除最旧的一行
-  }
-  
-  renderSubtitles();
+  renderSingleSubtitle(translated);
 }
 
-function renderSubtitles() {
+function renderSingleSubtitle(translated) {
   const contentEl = document.getElementById('va-content');
   if (!contentEl) return;
-  
-  contentEl.innerHTML = subtitleQueue.map(sub => `
-    <div style="margin-bottom: 10px;">
-      <div style="color: #ff9800; font-size: 12px; opacity: 0.8; line-height: 1.2;">${sub.original}</div>
-      <div style="color: #ffffff; font-size: 22px; font-weight: bold; line-height: 1.3;">${sub.translated}</div>
-    </div>
-  `).join('');
+  // 永远只显示最新的一行翻译
+  contentEl.innerText = translated;
 }
 
 async function translateText(text) {
