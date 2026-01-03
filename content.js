@@ -110,44 +110,30 @@ async function processSubtitle(text) {
   const translated = await translateText(cleanText);
   if (!translated) return;
 
-  // 严格 20 字限制与断句逻辑
-  let finalLines = splitByLengthAndPunctuation(translated, 20);
+  // 严格全屏 20 字翻页逻辑
+  const currentTotalLength = subtitleQueue.join('').length;
   
-  // 更新队列：始终保持最近两行
-  subtitleQueue = finalLines.slice(-2);
-  renderSubtitles();
-}
-
-function splitByLengthAndPunctuation(text, maxLength) {
-  // 简单的断句逻辑：按标点符号分割
-  const sentences = text.split(/([。？！；,，!?;])/).filter(s => s.length > 0);
-  let lines = [];
-  let currentLine = "";
-
-  for (let i = 0; i < sentences.length; i++) {
-    let part = sentences[i];
-    if ((currentLine + part).length > maxLength) {
-      if (currentLine) lines.push(currentLine);
-      currentLine = part;
-    } else {
-      currentLine += part;
-    }
+  if (currentTotalLength + translated.length > 20) {
+    // 超过 20 字，执行翻页（清空队列）
+    subtitleQueue = [translated];
+  } else {
+    // 未超过 20 字，追加到队列（最多保留两行以防万一，但受总字数限制）
+    subtitleQueue.push(translated);
+    if (subtitleQueue.length > 2) subtitleQueue.shift();
   }
-  if (currentLine) lines.push(currentLine);
-  return lines;
+  
+  renderSubtitles();
 }
 
 function renderSubtitles() {
   const contentEl = document.getElementById('va-content');
   if (!contentEl) return;
   
-  // 强制纯黄显示，严格两行
   contentEl.innerHTML = subtitleQueue.map((line, index) => `
     <div style="color: #ff9800 !important; 
-                font-size: ${index === 0 && subtitleQueue.length === 2 ? '20px' : '26px'};
-                opacity: ${index === 0 && subtitleQueue.length === 2 ? '0.6' : '1'};
-                margin-bottom: ${index === 0 && subtitleQueue.length === 2 ? '8px' : '0'};
-                font-weight: bold;">
+                font-size: 26px;
+                font-weight: bold;
+                margin-bottom: ${index === 0 && subtitleQueue.length === 2 ? '8px' : '0'};">
       ${line}
     </div>
   `).join('');
