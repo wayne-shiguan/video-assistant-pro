@@ -61,14 +61,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  function sendMessageToActiveTab(message) {
+  function sendMessageToActiveTab(message, retries = 3) {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
       if (tabs[0]) {
-        // 增加连接检查，防止 "Receiving end does not exist" 错误
         chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
           if (chrome.runtime.lastError) {
-            console.warn("连接尚未建立，正在尝试重新注入脚本...");
-            // 如果连接失败，尝试手动注入 content script (可选，但这里先记录日志)
+            if (retries > 0) {
+              console.log("连接重试中...");
+              setTimeout(() => sendMessageToActiveTab(message, retries - 1), 500);
+            }
           }
         });
       }

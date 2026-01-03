@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "视频助手 Pro (Video Assistant Pro)",
-  "version": "5.2",
-  "description": "修复版：支持 YouTube、Bilibili、小红书等平台字幕提取与双语翻译",
+  "version": "5.3",
+  "description": "稳定版：支持 YouTube、Bilibili、小红书等平台字幕提取与双语翻译",
   "permissions": [
     "activeTab",
     "scripting",
@@ -31,7 +31,7 @@
       ],
       "js": ["content.js"],
       "css": ["style.css"],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ]
 }
