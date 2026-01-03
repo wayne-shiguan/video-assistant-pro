@@ -3,7 +3,7 @@ let xOffset = 0;
 let yOffset = 0;
 let observer = null;
 let recognition = null;
-let currentScreenSubtitles = []; // 存储当前屏幕显示的字幕行
+let currentScreenText = ""; // 存储当前屏幕显示的纯文本内容
 let lastProcessedText = "";
 
 // 注入 CSS 强制隐藏原生字幕并统一黄色样式
@@ -58,12 +58,12 @@ function createSubtitleUI() {
   subtitleContainer.id = 'va-draggable-subtitles';
   subtitleContainer.style.cssText = `
     position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.85); padding: 15px 30px;
+    background-color: rgba(0, 0, 0, 0.85); padding: 15px 35px;
     border-radius: 12px; z-index: 2147483647; cursor: move;
-    text-align: center; max-width: 85%; min-width: 350px; line-height: 1.5;
+    text-align: center; max-width: 90%; min-width: 400px; line-height: 1.4;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1.5px solid #ff9800; user-select: none;
   `;
-  subtitleContainer.innerHTML = `<div id="va-content"></div>`;
+  subtitleContainer.innerHTML = `<div id="va-content" style="color: #ff9800 !important; font-size: 26px; font-weight: bold; white-space: normal; word-break: break-all;"></div>`;
   document.body.appendChild(subtitleContainer);
   
   subtitleContainer.onmousedown = (e) => {
@@ -81,7 +81,7 @@ function createSubtitleUI() {
 function initSubtitleObserver() {
   createSubtitleUI();
   subtitleContainer.style.display = 'block';
-  currentScreenSubtitles = [];
+  currentScreenText = "";
   lastProcessedText = "";
   if (observer) observer.disconnect();
   
@@ -96,13 +96,12 @@ function initSubtitleObserver() {
     }
     
     if (text && text !== lastProcessedText) {
-      // 针对 YouTube 的追加模式，我们只取新增的部分
       let newPart = text;
       if (text.startsWith(lastProcessedText)) {
         newPart = text.substring(lastProcessedText.length).trim();
       }
       
-      if (newPart.length > 2) { // 忽略过短的跳动
+      if (newPart.length > 1) {
         lastProcessedText = text;
         processSubtitle(newPart);
       }
@@ -118,19 +117,13 @@ async function processSubtitle(text) {
   const translated = await translateText(cleanText);
   if (!translated) return;
 
-  // 核心：严格全屏 20 字翻页逻辑
-  const currentTotalLength = currentScreenSubtitles.join('').length;
-  
-  if (currentTotalLength + translated.length > 20) {
-    // 超过 20 字，立即翻页（清空当前屏幕）
-    currentScreenSubtitles = [translated];
+  // 严格 60 字翻页逻辑
+  if (currentScreenText.length + translated.length > 60) {
+    // 超过 60 字，立即翻页（清空当前屏幕）
+    currentScreenText = translated;
   } else {
-    // 未超过 20 字，追加到当前屏幕
-    currentScreenSubtitles.push(translated);
-    // 即使总字数没超，如果行数超过 2 行也翻页，保持简洁
-    if (currentScreenSubtitles.length > 2) {
-        currentScreenSubtitles.shift();
-    }
+    // 未超过 60 字，追加到当前屏幕（保持单行显示，用空格或逗号分隔）
+    currentScreenText += (currentScreenText ? " " : "") + translated;
   }
   
   renderSubtitles();
@@ -140,28 +133,21 @@ function renderSubtitles() {
   const contentEl = document.getElementById('va-content');
   if (!contentEl) return;
   
-  // 强制纯黄显示
-  contentEl.innerHTML = currentScreenSubtitles.map((line, index) => `
-    <div style="color: #ff9800 !important; 
-                font-size: 26px;
-                font-weight: bold;
-                margin-bottom: ${index === 0 && currentScreenSubtitles.length === 2 ? '8px' : '0'};">
-      ${line}
-    </div>
-  `).join('');
+  // 强制单行显示（通过容器宽度自动换行，但逻辑上视为一个整体块）
+  contentEl.innerText = currentScreenText;
 }
 
 function stopSubtitleObserver() {
   if (observer) observer.disconnect();
   if (subtitleContainer) subtitleContainer.style.display = 'none';
-  currentScreenSubtitles = [];
+  currentScreenText = "";
   lastProcessedText = "";
 }
 
 function startMic(lang) {
   createSubtitleUI();
   subtitleContainer.style.display = 'block';
-  currentScreenSubtitles = [];
+  currentScreenText = "";
   if (recognition) recognition.stop();
   recognition = new webkitSpeechRecognition();
   recognition.continuous = true;
@@ -178,7 +164,7 @@ function startMic(lang) {
 function stopMic() {
   if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
   if (subtitleContainer) subtitleContainer.style.display = 'none';
-  currentScreenSubtitles = [];
+  currentScreenText = "";
 }
 
 async function translateText(text) {
