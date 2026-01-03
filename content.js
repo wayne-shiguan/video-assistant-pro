@@ -1,177 +1,74 @@
-let subtitleContainer = null;
-let xOffset = 0;
-let yOffset = 0;
-let observer = null;
-let recognition = null;
-let currentScreenText = ""; // 存储当前屏幕显示的纯文本内容
-let lastProcessedText = "";
-
-// 注入 CSS 强制隐藏原生字幕并统一黄色样式
-const style = document.createElement('style');
-style.id = 'va-global-styles';
-style.innerHTML = `
-  .ytp-caption-window-container, .bpx-player-subtitle, .subtitle-item, .video-caption { 
-    display: none !important; 
-  }
-  #va-draggable-subtitles * {
-    color: #ff9800 !important;
-    font-family: "Helvetica Neue", Helvetica, Arial, "Microsoft YaHei", sans-serif !important;
-  }
-`;
-document.head.appendChild(style);
-
+// 监听来自 popup 的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "setPlaybackRate") {
     document.querySelectorAll('video').forEach(v => v.playbackRate = request.rate);
   } else if (request.action === "toggleTranslation") {
     if (request.enabled) {
-      stopMic();
-      autoEnableSubtitles();
-      initSubtitleObserver();
-    } else {
-      stopSubtitleObserver();
-    }
-  } else if (request.action === "toggleMic") {
-    if (request.enabled) {
-      stopSubtitleObserver();
-      startMic(request.lang);
-    } else {
-      stopMic();
+      activateYouTubeNativeTranslation();
     }
   }
 });
 
-function autoEnableSubtitles() {
+// 全自动激活 YouTube 原生翻译字幕
+async function activateYouTubeNativeTranslation() {
   const host = window.location.hostname;
-  if (host.includes('youtube.com')) {
-    const btn = document.querySelector('.ytp-subtitles-button');
-    if (btn && btn.getAttribute('aria-pressed') === 'false') btn.click();
-  } else if (host.includes('bilibili.com')) {
-    const btn = document.querySelector('.squirtle-subtitles-item') || document.querySelector('.bpx-player-ctrl-subtitle');
-    if (btn) btn.click();
-  }
-}
+  if (!host.includes('youtube.com')) return;
 
-function createSubtitleUI() {
-  if (document.getElementById('va-draggable-subtitles')) return;
-  subtitleContainer = document.createElement('div');
-  subtitleContainer.id = 'va-draggable-subtitles';
-  subtitleContainer.style.cssText = `
-    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.85); padding: 15px 35px;
-    border-radius: 12px; z-index: 2147483647; cursor: move;
-    text-align: center; max-width: 90%; min-width: 400px; line-height: 1.4;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1.5px solid #ff9800; user-select: none;
-  `;
-  subtitleContainer.innerHTML = `<div id="va-content" style="color: #ff9800 !important; font-size: 26px; font-weight: bold; white-space: normal; word-break: break-all;"></div>`;
-  document.body.appendChild(subtitleContainer);
-  
-  subtitleContainer.onmousedown = (e) => {
-    let startX = e.clientX - xOffset;
-    let startY = e.clientY - yOffset;
-    document.onmousemove = (ev) => {
-      xOffset = ev.clientX - startX;
-      yOffset = ev.clientY - startY;
-      subtitleContainer.style.transform = `translate(calc(-50% + ${xOffset}px), ${yOffset}px)`;
-    };
-    document.onmouseup = () => document.onmousemove = null;
-  };
-}
-
-function initSubtitleObserver() {
-  createSubtitleUI();
-  subtitleContainer.style.display = 'block';
-  currentScreenText = "";
-  lastProcessedText = "";
-  if (observer) observer.disconnect();
-  
-  observer = new MutationObserver(() => {
-    let text = "";
-    const host = window.location.hostname;
-    if (host.includes('youtube.com')) {
-      const segments = document.querySelectorAll('.ytp-caption-segment');
-      text = Array.from(segments).map(s => s.innerText).join(' ').trim();
-    } else if (host.includes('bilibili.com')) {
-      text = Array.from(document.querySelectorAll('.bpx-player-subtitle-content')).map(s => s.innerText).join(' ').trim();
-    }
-    
-    if (text && text !== lastProcessedText) {
-      let newPart = text;
-      if (text.startsWith(lastProcessedText)) {
-        newPart = text.substring(lastProcessedText.length).trim();
-      }
-      
-      if (newPart.length > 1) {
-        lastProcessedText = text;
-        processSubtitle(newPart);
-      }
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-async function processSubtitle(text) {
-  const cleanText = text.replace(/英语（自动生成）|中文（简体）|点击查看设置|>>|字幕/g, '').trim();
-  if (!cleanText) return;
-
-  const translated = await translateText(cleanText);
-  if (!translated) return;
-
-  // 严格 60 字翻页逻辑
-  if (currentScreenText.length + translated.length > 60) {
-    // 超过 60 字，立即翻页（清空当前屏幕）
-    currentScreenText = translated;
-  } else {
-    // 未超过 60 字，追加到当前屏幕（保持单行显示，用空格或逗号分隔）
-    currentScreenText += (currentScreenText ? " " : "") + translated;
-  }
-  
-  renderSubtitles();
-}
-
-function renderSubtitles() {
-  const contentEl = document.getElementById('va-content');
-  if (!contentEl) return;
-  
-  // 强制单行显示（通过容器宽度自动换行，但逻辑上视为一个整体块）
-  contentEl.innerText = currentScreenText;
-}
-
-function stopSubtitleObserver() {
-  if (observer) observer.disconnect();
-  if (subtitleContainer) subtitleContainer.style.display = 'none';
-  currentScreenText = "";
-  lastProcessedText = "";
-}
-
-function startMic(lang) {
-  createSubtitleUI();
-  subtitleContainer.style.display = 'block';
-  currentScreenText = "";
-  if (recognition) recognition.stop();
-  recognition = new webkitSpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.lang = lang;
-  recognition.onresult = (event) => {
-    const result = event.results[event.results.length - 1][0].transcript;
-    processSubtitle(result);
-  };
-  recognition.onend = () => { if (recognition) recognition.start(); };
-  recognition.start();
-}
-
-function stopMic() {
-  if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
-  if (subtitleContainer) subtitleContainer.style.display = 'none';
-  currentScreenText = "";
-}
-
-async function translateText(text) {
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    return data[0][0][0];
-  } catch (e) { return ""; }
+    // 1. 开启 CC 字幕
+    const subButton = document.querySelector('.ytp-subtitles-button');
+    if (subButton && subButton.getAttribute('aria-pressed') === 'false') {
+      subButton.click();
+    }
+
+    // 2. 打开设置菜单
+    const settingsButton = document.querySelector('.ytp-settings-button');
+    if (settingsButton) {
+      settingsButton.click();
+      await sleep(300);
+
+      // 3. 找到“字幕”菜单项并点击
+      const menuItems = document.querySelectorAll('.ytp-menuitem');
+      let subtitleMenu = Array.from(menuItems).find(item => 
+        item.innerText.includes('字幕') || item.innerText.includes('Subtitles')
+      );
+
+      if (subtitleMenu) {
+        subtitleMenu.click();
+        await sleep(300);
+
+        // 4. 找到“自动翻译”并点击
+        const subMenuItems = document.querySelectorAll('.ytp-menuitem');
+        let autoTranslate = Array.from(subMenuItems).find(item => 
+          item.innerText.includes('自动翻译') || item.innerText.includes('Auto-translate')
+        );
+
+        if (autoTranslate) {
+          autoTranslate.click();
+          await sleep(300);
+
+          // 5. 找到“中文（简体）”并点击
+          const langItems = document.querySelectorAll('.ytp-menuitem');
+          let targetLang = Array.from(langItems).find(item => 
+            item.innerText.includes('中文（简体）') || item.innerText.includes('Chinese (Simplified)')
+          );
+
+          if (targetLang) {
+            targetLang.click();
+            console.log("YouTube 原生中文翻译已激活");
+          }
+        }
+      }
+      // 关闭设置菜单（如果还开着）
+      if (settingsButton.getAttribute('aria-expanded') === 'true') {
+        settingsButton.click();
+      }
+    }
+  } catch (error) {
+    console.error("激活原生翻译失败:", error);
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
